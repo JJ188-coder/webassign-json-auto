@@ -1,0 +1,25 @@
+{
+  "name": "webassign-json-auto",
+  "version": "1.0.0",
+  "description": "JSON-driven automation CLI for WebAssign assignments (MathType/calcPad LaTeX-to-MathML, numeric, pulldown, radio, checkbox, draft save & submit).",
+  "type": "module",
+  "bin": {
+    "webassign-cli": "./webassign-cli.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dump": "node ./webassign-cli.mjs dump",
+    "fill": "node ./webassign-cli.mjs fill"
+  },
+  "keywords": [
+    "webassign",
+    "mathtype",
+    "mathml",
+    "latex",
+    "cdp",
+    "automation"
+  ],
+  "license": "MIT"
+}

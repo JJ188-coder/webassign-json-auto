@@ -1,0 +1,17 @@
+{
+  "_comment": "Example answers JSON. Use null to skip a question or box. MathType (RA_*) boxes accept LaTeX or raw <math>...</math>.",
+  "q1": null,
+  "q2": [
+    "\\frac{\\pi}{8}",
+    "0",
+    "2.066372",
+    "x-axis",
+    "3"
+  ],
+  "q3": "24",
+  "q4": {
+    "0": "5",
+    "1": "\\frac{x}{x^2 + 2}"
+  },
+  "q5": "\\frac{2}{n}\\sqrt{3 + \\left(3 + \\frac{2i}{n}\\right)^2}"
+}
