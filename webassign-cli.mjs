@@ -148,7 +148,8 @@ const DUMP_PAGE_SCRIPT = `
   const questions = assignment.questions.map((q) => {
     if (q.requireCompleteInit) q.requireCompleteInit();
     const scoreEl = q.element.querySelector('.qScore, .points, [class*="score"]');
-    const textSnippet = (q.element.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 320);
+    const fullText = (q.element.innerText || '').replace(/\\s+/g, ' ').trim();
+    const textSnippet = fullText.slice(0, 320);
 
     const boxes = (q.boxes || []).filter(Boolean).map((b) => {
       const entry = {
@@ -184,7 +185,7 @@ const DUMP_PAGE_SCRIPT = `
 
     const startBtn = q.element.querySelector('input[id^="step_button_id_"], input[onclick*="tutorialStart"]');
     const stepSubmitBtn = q.element.querySelector('input[onclick*="tutorialSubmit"]');
-    const hadTutorial = Boolean(startBtn || stepSubmitBtn || /Tutorial Exercise/i.test(textSnippet));
+    const hadTutorial = Boolean(startBtn || stepSubmitBtn || /Tutorial Exercise/i.test(fullText));
     const activeBoxes = boxes.filter((b) => {
       const mtEl = document.getElementById('editable-math-' + b.id);
       const inpEl = document.getElementById(b.id);
