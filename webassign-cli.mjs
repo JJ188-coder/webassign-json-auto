@@ -5,7 +5,8 @@
  *
  * Commands:
  *   node webassign-cli.mjs dump [--out schema.json] [--template answers.template.json] [--channel applescript|cdp]
- *   node webassign-cli.mjs fill <answers.json> [--dry-run] [--save] [--submit-question <N>] [--submit-all] [--channel applescript|cdp]
+ *   node webassign-cli.mjs fill <answers.json> [--dry-run] [--save] [--submit-question <N>] [--submit-tutorial <N>] [--submit-all] [--channel applescript|cdp]
+ *   node webassign-cli.mjs tutorial-start <N> [--channel applescript|cdp]
  */
 
 import fs from 'node:fs';
@@ -181,12 +182,26 @@ const DUMP_PAGE_SCRIPT = `
       return entry;
     });
 
+    const startBtn = q.element.querySelector('input[id^="step_button_id_"], input[onclick*="tutorialStart"]');
+    const stepSubmitBtn = q.element.querySelector('input[onclick*="tutorialSubmit"]');
+    const hadTutorial = Boolean(startBtn || stepSubmitBtn || /Tutorial Exercise/i.test(textSnippet));
+    const activeBoxes = boxes.filter((b) => {
+      const mtEl = document.getElementById('editable-math-' + b.id);
+      const inpEl = document.getElementById(b.id);
+      const disabled = (mtEl && mtEl.classList.contains('mtDisabled')) || (inpEl && inpEl.disabled);
+      return !disabled;
+    });
+
     return {
       questionNumber: Number(q.viewPosition),
       position: Number(q.position),
       questionId: String(q.id),
       domId: q.element.id,
       scoreText: scoreEl ? scoreEl.innerText.replace(/\\s+/g, ' ').trim() : '',
+      isTutorial: hadTutorial,
+      tutorialState: !hadTutorial ? null : startBtn ? 'not_started' : stepSubmitBtn ? 'in_progress' : 'completed',
+      tutorialStartButtonId: startBtn ? startBtn.id : null,
+      activeBoxIds: activeBoxes.map(b => b.id),
       promptSnippet: textSnippet,
       boxes,
     };
@@ -207,7 +222,7 @@ const DUMP_PAGE_SCRIPT = `
 // ---------------------------------------------------------------------------
 
 const FILL_PAGE_SCRIPT = `
-  const { answers, dryRun, save, submitQuestion, submitAll } = PAYLOAD;
+  const { answers, dryRun, save, submitQuestion, submitTutorial, submitAll } = PAYLOAD;
   const depEl = document.getElementById('deployment');
   const dep = depEl ? depEl.value : null;
   const assignment = dep && window.WA && WA.Assignment ? WA.Assignment.retrieve(dep) : null;
@@ -560,7 +575,14 @@ const FILL_PAGE_SCRIPT = `
         });
       });
     }
-    if (submitQuestion != null) {
+    if (submitTutorial != null) {
+      const q = questionByNum.get(Number(submitTutorial));
+      if (!q) throw new Error('submitTutorial #' + submitTutorial + ' not found');
+      const stepBtn = q.element.querySelector('input[onclick*="tutorialSubmit"]');
+      if (!stepBtn) throw new Error('Question #' + submitTutorial + ' has no active tutorial step Submit button');
+      stepBtn.click();
+      submitResult = { submittedTutorialStep: Number(submitTutorial) };
+    } else if (submitQuestion != null) {
       const q = questionByNum.get(Number(submitQuestion));
       if (!q) throw new Error('submitQuestion #' + submitQuestion + ' not found');
       q.submit(true);
@@ -613,9 +635,15 @@ function buildTemplate(schema) {
     _comment: `${schema.title} (dep=${schema.deployment}). Fill values below; null skips a box. MathType (RA_*) accepts LaTeX or <math>...</math>. Pulldown accepts option text or value.`,
     _deployment: schema.deployment,
   };
+  const tutorials = schema.questions.filter(q => q.isTutorial && q.tutorialState !== 'completed');
+  if (tutorials.length) {
+    tpl._tutorialsWarning = `Sequential Tutorial Exercise(s) detected: ${tutorials.map(q => 'Q' + q.questionNumber + ' (' + q.tutorialState + ')').join(', ')}. Server hides future steps until unlocked; use 'tutorial-start <N>' and '--submit-tutorial <N>' step by step.`;
+  }
   for (const q of schema.questions) {
     const key = `q${q.questionNumber}`;
-    if (q.boxes.length === 1) {
+    if (q.isTutorial && q.tutorialState === 'not_started') {
+      tpl[key] = null; // must run tutorial-start first to reveal Step 1 boxes in DOM
+    } else if (q.boxes.length === 1) {
       const b = q.boxes[0];
       tpl[key] = b.currentValue ? null : '';
     } else {
@@ -670,6 +698,24 @@ Usage:
     return;
   }
 
+  if (cmd === 'tutorial-start') {
+    const qNum = Number(args._[1]);
+    if (!qNum) throw new Error('Usage: node webassign-cli.mjs tutorial-start <questionNumber>');
+    const res = await runInMainWorld(channel, `
+      const dep = document.getElementById('deployment')?.value;
+      const assignment = dep && window.WA && WA.Assignment ? WA.Assignment.retrieve(dep) : null;
+      if (!assignment) throw new Error('WA.Assignment not found');
+      const q = assignment.questions.find(x => Number(x.viewPosition) === Number(PAYLOAD.qNum));
+      if (!q) throw new Error('Question #' + PAYLOAD.qNum + ' not found');
+      const btn = q.element.querySelector('input[id^="step_button_id_"], input[onclick*="tutorialStart"]');
+      if (!btn) return { started: false, reason: 'Already started or not a tutorial question' };
+      btn.click();
+      return { started: true, questionNumber: PAYLOAD.qNum, buttonId: btn.id };
+    `, { qNum });
+    console.log(JSON.stringify(res, null, 2));
+    return;
+  }
+
   if (cmd === 'fill') {
     const jsonPath = args._[1];
     if (!jsonPath) throw new Error('Missing <answers.json> argument');
@@ -679,6 +725,7 @@ Usage:
       dryRun: Boolean(args['dry-run']),
       save: Boolean(args.save),
       submitQuestion: args['submit-question'] ? Number(args['submit-question']) : null,
+      submitTutorial: args['submit-tutorial'] ? Number(args['submit-tutorial']) : null,
       submitAll: Boolean(args['submit-all']),
     });
     console.log(JSON.stringify(result, null, 2));
